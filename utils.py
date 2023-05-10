@@ -106,10 +106,10 @@ def compute_stat_measures(values):
 
     return mean, vol, sharpe, skew, kurt
 
-def generate_mean_benchmark_forecast(excess_ret: pd.DataFrame, breakpoint: dt.datetime):
+def generate_mean_benchmark_forecast(excess_ret: pd.DataFrame, breakpoint: dt.datetime, method: str, window_size: int=240):
     """
     Generates a timeseries of monthly out-of-sample mean excess return forecasts
-    for the defined assets using recursive estimation approach.
+    for the defined assets.
 
     Parameters:
     -----------
@@ -117,6 +117,10 @@ def generate_mean_benchmark_forecast(excess_ret: pd.DataFrame, breakpoint: dt.da
         Assets (excess) returns data (for both asset classes).
     breakpoint : datetime
         datetime to split the data into in-sample & out-of-sample.
+    method : str
+        Specifies which estimation method to use, 'recursive' or 'rolling'.
+    window_size : int, default 240
+        rolling window size (only needed if method is 'rolling').
 
     Returns: 
     --------
@@ -129,18 +133,27 @@ def generate_mean_benchmark_forecast(excess_ret: pd.DataFrame, breakpoint: dt.da
     mean_forecast = pd.DataFrame(index=out_of_sample_period)
 
     # Loop over the out-of-sample period and compute
-    # mean forecasts using recursive estimation approach
+    # mean forecasts using specified estimation method
     for t in out_of_sample_period:
-        # Update the in-sample period to be considered 
-        # recursively to include all data up to period t
-        curr_in_sample = excess_ret[excess_ret.index < t]
+        index_loc = excess_ret.index.get_loc(t)
+        curr_in_sample = pd.DataFrame()
+        if (method == 'recursive'):
+            # Update the in-sample period to be considered 
+            # recursively to include all data up to period t
+            curr_in_sample = excess_ret[excess_ret.index < t]
+        else:
+            # Update the in-sample period to be considered 
+            # in a rolling window approach with defined window size
+            assert method == 'rolling'
+            curr_in_sample = excess_ret.iloc[index_loc-window_size: index_loc]
+
         # Compute the expected (mean) excess return for each asset using the current in-sample period
         for asset in curr_in_sample.columns:
             mean_forecast.loc[t, f"{asset.split('_')[0]}_MB"] = np.nanmean(curr_in_sample[asset].values)
 
     return mean_forecast
 
-def generate_ols_predictor_forecast(asset_excess_ret: pd.DataFrame, predictors: pd.DataFrame, breakpoint: dt.datetime):
+def generate_ols_predictor_forecast(asset_excess_ret: pd.DataFrame, predictors: pd.DataFrame, breakpoint: dt.datetime, method: str, window_size: int=240):
     """
     Generates a timeseries of monthly out-of-sample OLS return forecasts
     using the defined predictors for a specific asset class.
@@ -153,6 +166,10 @@ def generate_ols_predictor_forecast(asset_excess_ret: pd.DataFrame, predictors: 
         Predictors data.
     breakpoint : datetime
         datetime to split the data into in-sample & out-of-sample.
+    method : str
+        Specifies which estimation method to use, 'recursive' or 'rolling'.
+    window_size : int, default 240
+        rolling window size (only needed if method is 'rolling').
 
     Returns: 
     --------
@@ -170,10 +187,19 @@ def generate_ols_predictor_forecast(asset_excess_ret: pd.DataFrame, predictors: 
         pred_forecasts = []
 
         for t in out_of_sample_period:
-            # Update the in-sample period to be considered 
-            # recursively to include all data up to period t
-            curr_in_sample_asset_ret = asset_excess_ret[asset_excess_ret.index < t]
-            curr_in_sample_pred = pred_data.iloc[:asset_excess_ret.index.get_loc(t)]
+            index_loc = asset_excess_ret.index.get_loc(t)
+            curr_in_sample_asset_ret = curr_in_sample_pred = pd.DataFrame()
+            if (method == 'recursive'):
+                # Update the in-sample period to be considered 
+                # recursively to include all data up to period t
+                curr_in_sample_asset_ret = asset_excess_ret[asset_excess_ret.index < t]
+                curr_in_sample_pred = pred_data.iloc[:index_loc]
+            else:
+                # Update the in-sample period to be considered 
+                # in a rolling window approach with defined window size
+                assert method == 'rolling'
+                curr_in_sample_asset_ret = asset_excess_ret.iloc[index_loc-window_size: index_loc]
+                curr_in_sample_pred = pred_data.iloc[index_loc-window_size: index_loc]
             curr_in_sample_len = len(curr_in_sample_pred)
 
             regressor = curr_in_sample_pred.iloc[:curr_in_sample_len-1]
@@ -220,7 +246,7 @@ def generate_combination_mean_forecasts(asset1_pred_forecasts: pd.DataFrame, ass
 
     return combination_mean_forecasts
 
-def generate_plr_forecast(asset_excess_ret: pd.DataFrame, predictors: pd.DataFrame, breakpoint: dt.datetime):
+def generate_plr_forecast(asset_excess_ret: pd.DataFrame, predictors: pd.DataFrame, breakpoint: dt.datetime, method: str, window_size: int=240):
     """
     Generates a timeseries of monthly out-of-sample return forecasts
     predicted using penalised linear regression models fit on 
@@ -234,6 +260,10 @@ def generate_plr_forecast(asset_excess_ret: pd.DataFrame, predictors: pd.DataFra
         Predictors data.
     breakpoint : datetime
         datetime to split the data into in-sample & out-of-sample.
+    method : str
+        Specifies which estimation method to use, 'recursive' or 'rolling'.
+    window_size : int, default 240
+        rolling window size (only needed if method is 'rolling').
 
     Returns: 
     --------
@@ -248,11 +278,21 @@ def generate_plr_forecast(asset_excess_ret: pd.DataFrame, predictors: pd.DataFra
     forecasts = []
 
     for t in out_of_sample_period:
-        # Update the in-sample period to be considered
-        # recursively to include all data up to period t
-        curr_in_sample_asset_ret = asset_excess_ret.loc[asset_excess_ret.index < t]
-        curr_in_sample_pred = predictors.iloc[:asset_excess_ret.index.get_loc(t)]
+        index_loc = asset_excess_ret.index.get_loc(t)
+        curr_in_sample_asset_ret = curr_in_sample_pred = pd.DataFrame()
+        if (method == 'recursive'):
+            # Update the in-sample period to be considered 
+            # recursively to include all data up to period t
+            curr_in_sample_asset_ret = asset_excess_ret[asset_excess_ret.index < t]
+            curr_in_sample_pred = predictors.iloc[:index_loc]
+        else:
+            # Update the in-sample period to be considered 
+            # in a rolling window approach with defined window size
+            assert method == 'rolling'
+            curr_in_sample_asset_ret = asset_excess_ret.iloc[index_loc-window_size: index_loc]
+            curr_in_sample_pred = predictors.iloc[index_loc-window_size: index_loc]
         curr_in_sample_len = len(curr_in_sample_pred)
+        
         X = curr_in_sample_pred.iloc[:curr_in_sample_len-1].values
         y = curr_in_sample_asset_ret.iloc[1:curr_in_sample_len].values
         
@@ -340,7 +380,7 @@ def dm_test(real_values, pred1, pred2, h=1):
 
     return result
 
-def generate_portfolio_var_cov_mat_forecast(excess_ret: pd.DataFrame, breakpoint: dt.datetime):
+def generate_portfolio_var_cov_mat_forecast(excess_ret: pd.DataFrame, breakpoint: dt.datetime, method: str, window_size: int=240):
     """
     Generates a timeseries of monthly out-of-sample variance-covariance 
     matrix forecasts for a portfolio of assets.
@@ -351,6 +391,10 @@ def generate_portfolio_var_cov_mat_forecast(excess_ret: pd.DataFrame, breakpoint
         Assets (excess) returns data (for both asset classes).
     breakpoint : datetime
         datetime to split the data into in-sample & out-of-sample.
+    method : str
+        Specifies which estimation method to use, 'recursive' or 'rolling'.
+    window_size : int, default 240
+        rolling window size (only needed if method is 'rolling').
 
     Returns: 
     --------
@@ -364,9 +408,18 @@ def generate_portfolio_var_cov_mat_forecast(excess_ret: pd.DataFrame, breakpoint
     # Loop over the out-of-sample period and compute
     # portfolio var-cov matrice forecasts using recursive estimation approach
     for t in out_of_sample_period:
-        # Update the in-sample period to be considered 
-        # recursively to include all data up to period t
-        curr_in_sample = excess_ret[excess_ret.index < t]
+        index_loc = excess_ret.index.get_loc(t)
+        curr_in_sample = pd.DataFrame()
+        if (method == 'recursive'):
+            # Update the in-sample period to be considered 
+            # recursively to include all data up to period t
+            curr_in_sample = excess_ret[excess_ret.index < t]
+        else:
+            # Update the in-sample period to be considered 
+            # in a rolling window approach with defined window size
+            assert method == 'rolling'
+            curr_in_sample = excess_ret.iloc[index_loc-window_size: index_loc]
+
         # Compute the portfolio var-cov matrices using the current in-sample period
         cov_mat = np.cov(curr_in_sample.values, rowvar=False, ddof=1)
         cov_mats.append(cov_mat)
