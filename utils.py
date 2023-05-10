@@ -212,7 +212,9 @@ def generate_ols_predictor_forecast(asset_excess_ret: pd.DataFrame, predictors: 
             X_hat = sm.add_constant(curr_in_sample_pred.iloc[curr_in_sample_len-1].values, has_constant='add')
             forecast = ols_res.predict(X_hat) # ols_model.predict(params=[ols_res.params[0], ols_res.params[1]], exog=X_hat)
             pred_forecasts.append(forecast[0])
-        
+
+        with open(f'./outputs/ols_summary_{method}.txt', 'a') as fh:
+            fh.write(ols_res.summary().as_latex())
         ols_forecasts[pred] = pred_forecasts
     return ols_forecasts
 
