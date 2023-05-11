@@ -6,6 +6,7 @@ from scipy.stats import t
 import statsmodels.api as sm
 import collections
 from sklearn.metrics import mean_squared_error
+import argparse
 
 from utils import *
 
@@ -21,15 +22,6 @@ class ForecastingAnalysis:
         self.bond_full_df = bond_full_df
         self.rf_ret_df = rf_ret_df
 
-    def question1(self, simp_ret_df):
-        sp_mean, sp_vol, sp_sharpe, sp_skew, sp_kurt = compute_stat_measures(simp_ret_df['SP500_excess'].values)
-        bond_mean, bond_vol, bond_sharpe, bond_skew, bond_kurt = compute_stat_measures(simp_ret_df['LBUSTRUU_excess'].values)
-
-        asset_ret_summary_stats = pd.DataFrame({'SP500': [sp_mean, sp_vol, sp_sharpe, sp_skew, sp_kurt], 
-                                                'LBUSTRUU': [bond_mean, bond_vol, bond_sharpe, bond_skew, bond_kurt]}, 
-                                                index=['Mean', 'Volatility', 'Sharpe', 'Skew', 'Kurtosis'])
-        return asset_ret_summary_stats
-
     def question2(self, simp_ret_df, breakpoint, method, window_size=None):
         mean_benchmark_forecasts_df = generate_mean_benchmark_forecast(simp_ret_df.loc[:, ['SP500_excess', 'LBUSTRUU_excess']], breakpoint, method=method, window_size=window_size if window_size is not None else None)
         return mean_benchmark_forecasts_df
@@ -43,10 +35,10 @@ class ForecastingAnalysis:
         bond_predictors = predictors_df.loc[:, ['infl', 'tbl', 'lty', 'ltr']]
         bond_predictors['DFY'] = predictors_df['BAA'] - predictors_df['AAA']
 
-        # out-of-sample return forecasts for SP500 predicted using OLS fit on 5 different predictors (recursive method)
+        # out-of-sample return forecasts for SP500 predicted using OLS fit on 5 different predictors
         sp500_ols_forecasts_df = generate_ols_predictor_forecast(simp_ret_df.loc[:, ['SP500_excess']], sp500_predictors,
                                                                  breakpoint=breakpoint, method=method, window_size=window_size if window_size is not None else None)
-        # out-of-sample return forecasts for bonds predicted using OLS fit on 5 different predictors (recursive method)
+        # out-of-sample return forecasts for bonds predicted using OLS fit on 5 different predictors
         bond_ols_forecasts_df = generate_ols_predictor_forecast(simp_ret_df.loc[:, ['LBUSTRUU_excess']], bond_predictors,
                                                                 breakpoint=breakpoint, method=method, window_size=window_size if window_size is not None else None)
         # Rename the columns in each data frame
@@ -56,13 +48,13 @@ class ForecastingAnalysis:
         ols_predictor_forecasts_df = pd.concat([sp500_ols_forecasts_df, bond_ols_forecasts_df], axis=1)
 
 
-        # Compute Combination mean forecasts (recursive)
+        # Compute Combination mean forecasts 
         combination_mean_forecasts_df = generate_combination_mean_forecasts(sp500_ols_forecasts_df, bond_ols_forecasts_df, assets_names=asset_tickers)
 
-        # out-of-sample return forecasts for SP500 predicted using PLR fit on predictors (recursive)
+        # out-of-sample return forecasts for SP500 predicted using PLR fit on predictors 
         sp500_plr_forecasts_df = generate_plr_forecast(simp_ret_df.loc[:, ['SP500_excess']], sp500_predictors,
                                                                  breakpoint=breakpoint, method=method, window_size=window_size if window_size is not None else None)
-        # out-of-sample return forecasts for bonds predicted using PLR fit on predictors (recursive)
+        # out-of-sample return forecasts for bonds predicted using PLR fit on predictors
         bond_plr_forecasts_df = generate_plr_forecast(simp_ret_df.loc[:, ['LBUSTRUU_excess']], bond_predictors,
                                                                 breakpoint=breakpoint, method=method, window_size=window_size if window_size is not None else None)
         # Rename the columns in each data frame
@@ -71,7 +63,7 @@ class ForecastingAnalysis:
         # Concatenate the data frames along the columns axis and create a multi-level column index
         plr_predictor_forecasts_df = pd.concat([sp500_plr_forecasts_df, bond_plr_forecasts_df], axis=1)
 
-        # combine benchamark & all 8 forecast model predictions for each asset class (recursive)
+        # combine benchamark & all 8 forecast model predictions for each asset class 
         sp500_all_models = pd.concat([mean_benchmark_forecasts_df.loc[:, ['SP500_MB']], sp500_ols_forecasts_df['SP500'], 
                                       combination_mean_forecasts_df.loc[:, ['SP500_Comb_Mean']], sp500_plr_forecasts_df['SP500']], axis=1)
         sp500_all_models.rename(columns={'SP500_MB': 'Benchmark', 'SP500_Comb_Mean': 'Combination_mean'}, inplace=True)
@@ -79,35 +71,35 @@ class ForecastingAnalysis:
                                       combination_mean_forecasts_df.loc[:, ['LBUSTRUU_Comb_Mean']], bond_plr_forecasts_df['LBUSTRUU']], axis=1)
         bond_all_models.rename(columns={'LBUSTRUU_MB': 'Benchmark', 'LBUSTRUU_Comb_Mean': 'Combination_mean'}, inplace=True)   
 
-        # Compute MSFE for all predictive models & corresponding benchmarks for both the assets (recursive)
+        # Compute MSFE for all predictive models & corresponding benchmarks for both the assets
         msfe_df = pd.DataFrame(index=asset_tickers, columns=['Benchmark', 'OLS_1', 'OLS_2', 'OLS_3', 'OLS_4', 'OLS_5', 'CM', 'PLR_1', 'PLR_2'])
         msfe_df.loc[asset_tickers[0]] = [mean_squared_error(simp_ret_df.loc[simp_ret_df.index > breakpoint, ['SP500_excess']], sp500_all_models[x]) 
                                 for x in sp500_all_models.columns]
         msfe_df.loc[asset_tickers[1]] = [mean_squared_error(simp_ret_df.loc[simp_ret_df.index > breakpoint, ['LBUSTRUU_excess']], bond_all_models[x]) 
                                 for x in bond_all_models.columns]
 
-        # Compute the ratios of MSFEs of predictive models to corresponding benchmark MSFE values (recursive)  
+        # Compute the ratios of MSFEs of predictive models to corresponding benchmark MSFE values
         msfe_ratios_to_benchmark = pd.DataFrame(index=asset_tickers, columns=['OLS_1', 'OLS_2', 'OLS_3', 'OLS_4', 'OLS_5', 'CM', 'PLR_1', 'PLR_2'])
         msfe_ratios_to_benchmark.loc[asset_tickers[0]] = [msfe_df.loc[asset_tickers[0], [x]].values[0] / msfe_df.loc[asset_tickers[0], ['Benchmark']].values[0] for x in msfe_df.columns[1:]]
         msfe_ratios_to_benchmark.loc[asset_tickers[1]] = [msfe_df.loc[asset_tickers[1], [x]].values[0] / msfe_df.loc[asset_tickers[1], ['Benchmark']].values[0] for x in msfe_df.columns[1:]]
 
-        # Check for equal predictive ability of all 8 predictive models with the benchmark using DM test (recursive)
-        dm_test_recursive = pd.DataFrame(index=pd.MultiIndex.from_product([asset_tickers, ['dm_tstat', 'p_val']]), 
+        # Check for equal predictive ability of all 8 predictive models with the benchmark using DM test
+        dm_test_stats = pd.DataFrame(index=pd.MultiIndex.from_product([asset_tickers, ['dm_tstat', 'p_val']]), 
                                               columns=['OLS_1', 'OLS_2', 'OLS_3', 'OLS_4', 'OLS_5', 'CM', 'PLR_1', 'PLR_2'])
-        dm_test_recursive.loc[(asset_tickers[0], 'dm_tstat')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'SP500_excess'].values,
+        dm_test_stats.loc[(asset_tickers[0], 'dm_tstat')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'SP500_excess'].values,
                                                                      pred1=sp500_all_models[col].values, pred2=sp500_all_models['Benchmark'].values)[0]
                                                                        for col in sp500_all_models.columns[1:]]
-        dm_test_recursive.loc[(asset_tickers[0], 'p_val')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'SP500_excess'].values,
+        dm_test_stats.loc[(asset_tickers[0], 'p_val')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'SP500_excess'].values,
                                                                      pred1=sp500_all_models[col].values, pred2=sp500_all_models['Benchmark'].values)[1]
                                                                        for col in sp500_all_models.columns[1:]]
-        dm_test_recursive.loc[(asset_tickers[1], 'dm_tstat')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'LBUSTRUU_excess'].values,
+        dm_test_stats.loc[(asset_tickers[1], 'dm_tstat')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'LBUSTRUU_excess'].values,
                                                                      pred1=bond_all_models[col].values, pred2=bond_all_models['Benchmark'].values)[0]
                                                                        for col in bond_all_models.columns[1:]]
-        dm_test_recursive.loc[(asset_tickers[1], 'p_val')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'LBUSTRUU_excess'].values,
+        dm_test_stats.loc[(asset_tickers[1], 'p_val')] = [dm_test(real_values=simp_ret_df.loc[simp_ret_df.index > breakpoint, 'LBUSTRUU_excess'].values,
                                                                      pred1=bond_all_models[col].values, pred2=bond_all_models['Benchmark'].values)[1]
                                                                        for col in bond_all_models.columns[1:]]
 
-        return ols_predictor_forecasts_df, combination_mean_forecasts_df, plr_predictor_forecasts_df, msfe_df, msfe_ratios_to_benchmark, dm_test_recursive, sp500_all_models, bond_all_models
+        return ols_predictor_forecasts_df, combination_mean_forecasts_df, plr_predictor_forecasts_df, msfe_df, msfe_ratios_to_benchmark, dm_test_stats, sp500_all_models, bond_all_models
 
     def plot_forecast(self, sp500_all_models, bond_all_models, method):
 
@@ -184,7 +176,7 @@ class ForecastingAnalysis:
         plt.legend(loc='best')
         plt.show()
 
-def main():
+def main(method, rolling_window_size):
     # Load data
     sp500_full_df, bond_full_df, rf_ret_df, predictors_df = get_market_data()
     breakpoint = dt.datetime(2000, 1, 1)
@@ -194,12 +186,14 @@ def main():
     # Create instance of ForecastingAnalysis class
     forecasting_analysis = ForecastingAnalysis(sp500_full_df, bond_full_df, rf_ret_df)
 
-    # Call method with flag
-    method = 'rolling'  # or 'rolling'
-
 
     ##---Question 1---##
-    asset_ret_summary_stats = forecasting_analysis.question1(simp_ret_df)
+    sp_mean, sp_vol, sp_sharpe, sp_skew, sp_kurt = compute_stat_measures(simp_ret_df['SP500_excess'].values)
+    bond_mean, bond_vol, bond_sharpe, bond_skew, bond_kurt = compute_stat_measures(simp_ret_df['LBUSTRUU_excess'].values)
+
+    asset_ret_summary_stats = pd.DataFrame({'SP500': [sp_mean, sp_vol, sp_sharpe, sp_skew, sp_kurt], 
+                                            'LBUSTRUU': [bond_mean, bond_vol, bond_sharpe, bond_skew, bond_kurt]}, 
+                                            index=['Mean', 'Volatility', 'Sharpe', 'Skew', 'Kurtosis'])
     print('\nAsset class excess return summary statistics (total time period)')
     print('-' * 100)
     print(asset_ret_summary_stats)
@@ -214,7 +208,7 @@ def main():
         ##---End of Question 2---##
 
         ##---Question 3---##
-        ols_predictor_forecasts_df, combination_mean_forecasts_df, plr_predictor_forecasts_df, msfe_df, msfe_ratios_to_benchmark, dm_test_recursive, sp500_all_models, bond_all_models = forecasting_analysis.question3(simp_ret_df, predictors_df, breakpoint, asset_tickers, mean_benchmark_forecasts_df, method)
+        ols_predictor_forecasts_df, combination_mean_forecasts_df, plr_predictor_forecasts_df, msfe_df, msfe_ratios_to_benchmark, dm_test_stats, sp500_all_models, bond_all_models = forecasting_analysis.question3(simp_ret_df, predictors_df, breakpoint, asset_tickers, mean_benchmark_forecasts_df, method)
         print(f'\nOut-of-sample OLS Predictor {method} forecasts')
         print('-' * 100)
         print(ols_predictor_forecasts_df)
@@ -232,7 +226,7 @@ def main():
         print(msfe_ratios_to_benchmark)
         print(f'\nDM test to check for equal predictive ability relative to mean benchmark forecasts (all 8 {method} predictive models for both asset classes)')
         print('-' * 100)
-        print(dm_test_recursive)
+        print(dm_test_stats)
         forecasting_analysis.plot_forecast(sp500_all_models, bond_all_models, method)
         ##---End of Question 3---##
 
@@ -259,13 +253,12 @@ def main():
     else:
 
         ##---Question 6---##
-        rolling_window_size = 240
         mean_benchmark_forecasts_df = forecasting_analysis.question2(simp_ret_df, breakpoint, method=method, window_size=rolling_window_size)
         print(f'\nOut-of-sample Mean Benchmark {method} forecasts')
         print('-' * 100)
         print(mean_benchmark_forecasts_df)
 
-        ols_predictor_forecasts_df, combination_mean_forecasts_df, plr_predictor_forecasts_df, msfe_df, msfe_ratios_to_benchmark, dm_test_recursive, sp500_all_models, bond_all_models = forecasting_analysis.question3(simp_ret_df, predictors_df, breakpoint, asset_tickers, mean_benchmark_forecasts_df, method, rolling_window_size)
+        ols_predictor_forecasts_df, combination_mean_forecasts_df, plr_predictor_forecasts_df, msfe_df, msfe_ratios_to_benchmark, dm_test_stats, sp500_all_models, bond_all_models = forecasting_analysis.question3(simp_ret_df, predictors_df, breakpoint, asset_tickers, mean_benchmark_forecasts_df, method, rolling_window_size)
         print(f'\nOut-of-sample OLS Predictor {method} forecasts')
         print('-' * 100)
         print(ols_predictor_forecasts_df)
@@ -283,7 +276,7 @@ def main():
         print(msfe_ratios_to_benchmark)
         print(f'\nDM test to check for equal predictive ability relative to mean benchmark forecasts (all 8 {method} predictive models for both asset classes)')
         print('-' * 100)
-        print(dm_test_recursive)
+        print(dm_test_stats)
         forecasting_analysis.plot_forecast(sp500_all_models, bond_all_models, method)
 
         portf_cov_mat_forecasts_df = forecasting_analysis.question4(simp_ret_df, breakpoint, method, rolling_window_size)
@@ -303,5 +296,13 @@ def main():
         ##---End of Question 6---##
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Forecasting Analysis")
+    parser.add_argument("-m", "--method", choices=["recursive", "rolling"], default="rolling", help="Forecasting method: 'recursive' or 'rolling'. Default is 'rolling'.")
+    parser.add_argument("-w", "--window", type=int, default=240, help="Rolling window size (only used if method is 'rolling'). Default is 240.")
+    args = parser.parse_args()
+    return args
+
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args.method, args.window)
