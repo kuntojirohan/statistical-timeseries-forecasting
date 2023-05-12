@@ -47,7 +47,7 @@ class ForecastingAnalysis:
         simp_ret_df : pd.DataFrame
             A DataFrame containing the simple excess returns data for two assets: 
             'SP500_excess' and 'LBUSTRUU_excess'
-        breakpoint : int or str
+        breakpoint : dt.datetime
             The breakpoint used for splitting the data into training and testing sets representing 
             a date in the format
         method : str
@@ -78,7 +78,7 @@ class ForecastingAnalysis:
             'SP500_excess' and 'LBUSTRUU_excess'
         predictors_df: pd.DataFrame
             A DataFrame containing the predictor variables.
-        breakpoint : int or str
+        breakpoint : dt.datetime
             The breakpoint used for splitting the data into training and testing sets representing 
             a date in the format
         asset_tickers: list
@@ -234,7 +234,7 @@ class ForecastingAnalysis:
         simp_ret_df : pd.DataFrame
             A DataFrame containing the simple excess returns data for two assets: 
             'SP500_excess' and 'LBUSTRUU_excess'
-        breakpoint : int or str
+        breakpoint : dt.datetime
             The breakpoint used for splitting the data into training and testing sets representing 
             a date in the format
         method : str
